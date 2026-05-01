@@ -12,13 +12,17 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
-  final _formKey    = GlobalKey<FormState>();
-  final _nameCtrl   = TextEditingController();
-  final _emailCtrl  = TextEditingController();
-  final _passCtrl   = TextEditingController();
-  final _bioCtrl    = TextEditingController();
-  bool  _obscure    = true;
-  String _role = AppConstants.roleStudent;
+  final _nameCtrl  = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passCtrl  = TextEditingController();
+  final _bioCtrl   = TextEditingController();
+  bool   _obscure  = true;
+  String _role     = AppConstants.roleStudent;
+
+  // field errors
+  String? _nameError;
+  String? _emailError;
+  String? _passError;
 
   @override
   void dispose() {
@@ -27,190 +31,390 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     super.dispose();
   }
 
+  bool _validate() {
+    setState(() {
+      _nameError = null; _emailError = null; _passError = null;
+    });
+    bool ok = true;
+    if (_nameCtrl.text.trim().isEmpty) {
+      setState(() => _nameError = 'Please enter your full name');
+      ok = false;
+    }
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) {
+      setState(() => _emailError = 'Please enter your email address');
+      ok = false;
+    } else if (!RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(email)) {
+      setState(() => _emailError = 'Please enter a valid email address');
+      ok = false;
+    }
+    if (_passCtrl.text.isEmpty) {
+      setState(() => _passError = 'Please enter a password');
+      ok = false;
+    } else if (_passCtrl.text.length < 6) {
+      setState(() => _passError = 'Password must be at least 6 characters');
+      ok = false;
+    }
+    return ok;
+  }
+
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-    final vm = ref.read(authViewModelProvider);
+    if (!_validate()) return;
+    final vm  = ref.read(authViewModelProvider);
     final err = await vm.register(
-      name: _nameCtrl.text.trim(),
-      email: _emailCtrl.text.trim(),
+      name:     _nameCtrl.text.trim(),
+      email:    _emailCtrl.text.trim(),
       password: _passCtrl.text,
-      role: _role,
-      bio: _role == AppConstants.roleInstructor ? _bioCtrl.text.trim() : null,
+      role:     _role,
+      bio:      _role == AppConstants.roleInstructor
+                    ? _bioCtrl.text.trim() : null,
     );
     if (!mounted) return;
     if (err != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(err), backgroundColor: AppTheme.error));
+      if (err.toLowerCase().contains('email') ||
+          err.toLowerCase().contains('already')) {
+        setState(() => _emailError = '❌ This email is already registered.');
+      } else if (err.toLowerCase().contains('password')) {
+        setState(() => _passError = '❌ $err');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(err), backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ));
+      }
+    } else {
+      // Success
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Account created! Please login.'),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        ));
+        context.go('/auth/login');
+      }
+    }
+  }
+
+  Future<void> _googleRegister() async {
+    final vm  = ref.read(authViewModelProvider);
+    final err = await vm.signInWithGoogle(role: _role);
+    if (!mounted) return;
+    if (err != null && err != 'Google sign-in cancelled') {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(err), backgroundColor: AppTheme.error));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final vm = ref.watch(authViewModelProvider);
-
     return Scaffold(
-      backgroundColor: AppTheme.bg,
-      appBar: AppBar(
-        title: const Text('Create Account'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new),
-          onPressed: () => context.pop(),
+      backgroundColor: Colors.white,
+      body: Column(children: [
+
+        // ── Header ───────────────────────────────────────
+        Container(
+          width: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF1A73E8), Color(0xFF0D47A1)],
+              begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(32),
+              bottomRight: Radius.circular(32)),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(0, 24, 0, 28),
+              child: Column(children: [
+                Container(
+                  width: 72, height: 72,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 12, offset: const Offset(0, 4))],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.school, color: Color(0xFF1A73E8), size: 40),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('Create Account',
+                    style: TextStyle(
+                        color: Colors.white, fontSize: 22,
+                        fontWeight: FontWeight.w800)),
+              ]),
+            ),
+          ),
         ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Role selector ──
-              const Text('I am a...', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+
+        // ── Form ─────────────────────────────────────────
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+              const Text('Join FastLearn',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800,
+                      color: Color(0xFF1A1A2E))),
+              const SizedBox(height: 4),
+              const Text('Start your learning journey today',
+                  style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+              const SizedBox(height: 22),
+
+              // Full Name
+              _buildField(
+                controller: _nameCtrl,
+                hint: 'Full Name',
+                icon: Icons.person_outline,
+                errorText: _nameError,
+                onChanged: (_) => setState(() => _nameError = null),
+              ),
+              const SizedBox(height: 12),
+
+              // Email
+              _buildField(
+                controller: _emailCtrl,
+                hint: 'Email Address',
+                icon: Icons.email_outlined,
+                errorText: _emailError,
+                keyboardType: TextInputType.emailAddress,
+                onChanged: (_) => setState(() => _emailError = null),
+              ),
+              const SizedBox(height: 12),
+
+              // Password
+              _buildField(
+                controller: _passCtrl,
+                hint: 'Password',
+                icon: Icons.lock_outline,
+                errorText: _passError,
+                obscure: _obscure,
+                onChanged: (_) => setState(() => _passError = null),
+                suffix: IconButton(
+                  icon: Icon(_obscure
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                      color: const Color(0xFF6B7280), size: 20),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Role selector
+              const Text('I want to join as:',
+                  style: TextStyle(fontWeight: FontWeight.w700,
+                      fontSize: 14, color: Color(0xFF1A1A2E))),
               const SizedBox(height: 12),
               Row(children: [
-                _RoleChip(
+                _RoleCard(
                   label: 'Student',
                   icon: Icons.school,
                   selected: _role == AppConstants.roleStudent,
                   onTap: () => setState(() => _role = AppConstants.roleStudent),
                 ),
                 const SizedBox(width: 12),
-                _RoleChip(
+                _RoleCard(
                   label: 'Instructor',
                   icon: Icons.cast_for_education,
                   selected: _role == AppConstants.roleInstructor,
                   onTap: () => setState(() => _role = AppConstants.roleInstructor),
                 ),
               ]),
+
+              // Bio for instructor
+              if (_role == AppConstants.roleInstructor) ...[
+                const SizedBox(height: 14),
+                _buildField(
+                  controller: _bioCtrl,
+                  hint: 'Your expertise / bio',
+                  icon: Icons.info_outline,
+                  maxLines: 3,
+                ),
+              ],
               const SizedBox(height: 24),
 
-              // ── Name ──
-              _buildLabel('Full Name'),
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(
-                  hintText: 'Your full name',
-                  prefixIcon: Icon(Icons.person_outline, color: AppTheme.primary)),
-                validator: (v) => v == null || v.isEmpty ? 'Name required' : null,
-              ),
-              const SizedBox(height: 16),
-
-              // ── Email ──
-              _buildLabel('Email'),
-              TextFormField(
-                controller: _emailCtrl,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  hintText: 'you@email.com',
-                  prefixIcon: Icon(Icons.email_outlined, color: AppTheme.primary)),
-                validator: (v) {
-                  if (v == null || v.isEmpty) return 'Email required';
-                  if (!v.contains('@')) return 'Enter a valid email';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // ── Password ──
-              _buildLabel('Password'),
-              TextFormField(
-                controller: _passCtrl,
-                obscureText: _obscure,
-                decoration: InputDecoration(
-                  hintText: 'Minimum 6 characters',
-                  prefixIcon: const Icon(Icons.lock_outline, color: AppTheme.primary),
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                  ),
-                ),
-                validator: (v) {
-                  if (v == null || v.isEmpty) return 'Password required';
-                  if (v.length < 6) return 'Minimum 6 characters';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // ── Bio (instructor only) ──
-              if (_role == AppConstants.roleInstructor) ...[
-                _buildLabel('Bio / Expertise'),
-                TextFormField(
-                  controller: _bioCtrl,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    hintText: 'Tell students about yourself and your expertise',
-                    prefixIcon: Icon(Icons.info_outline, color: AppTheme.primary)),
-                  validator: (v) =>
-                    _role == AppConstants.roleInstructor && (v == null || v.isEmpty)
-                    ? 'Bio required for instructors' : null,
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              const SizedBox(height: 8),
-
-              // ── Register Button ──
+              // Create Account button
               SizedBox(
-                width: double.infinity,
+                width: double.infinity, height: 52,
                 child: ElevatedButton(
                   onPressed: vm.isLoading ? null : _register,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF5A623),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
                   child: vm.isLoading
                       ? const SizedBox(width: 22, height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Create Account'),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.5, color: Colors.white))
+                      : const Text('Create Account',
+                          style: TextStyle(fontSize: 16,
+                              fontWeight: FontWeight.w700)),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
+              // Divider
+              Row(children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Text('or', style: TextStyle(
+                      color: Colors.grey.shade400, fontSize: 13)),
+                ),
+                const Expanded(child: Divider()),
+              ]),
+              const SizedBox(height: 16),
+
+              // Google button
+              SizedBox(
+                width: double.infinity, height: 52,
+                child: OutlinedButton(
+                  onPressed: vm.isLoading ? null : _googleRegister,
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.grey.shade300),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                    Image.network(
+                      'https://www.google.com/favicon.ico',
+                      width: 20, height: 20,
+                      errorBuilder: (_, __, ___) => const Icon(
+                          Icons.g_mobiledata, color: Colors.red, size: 24),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('Sign up with Google',
+                        style: TextStyle(
+                            color: Color(0xFF1A1A2E),
+                            fontWeight: FontWeight.w600, fontSize: 14)),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Login link
               Center(child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Text('Already have an account? ', style: TextStyle(color: AppTheme.textGrey)),
+                const Text('Already have an account? ',
+                    style: TextStyle(color: Color(0xFF6B7280))),
                 GestureDetector(
                   onTap: () => context.pop(),
                   child: const Text('Sign In',
-                    style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w700)),
+                      style: TextStyle(color: Color(0xFF1A73E8),
+                          fontWeight: FontWeight.w700)),
                 ),
               ])),
-            ],
+            ]),
           ),
         ),
-      ),
+      ]),
     );
   }
 
-  Widget _buildLabel(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)));
+  Widget _buildField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    String? errorText,
+    bool obscure = false,
+    int maxLines = 1,
+    TextInputType keyboardType = TextInputType.text,
+    Widget? suffix,
+    ValueChanged<String>? onChanged,
+  }) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F9FF),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: errorText != null
+                  ? AppTheme.error : const Color(0xFFE5E7EB)),
+          ),
+          child: TextField(
+            controller: controller,
+            obscureText: obscure,
+            maxLines: maxLines,
+            keyboardType: keyboardType,
+            onChanged: onChanged,
+            style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A2E)),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: const TextStyle(
+                  color: Color(0xFF9CA3AF), fontSize: 14),
+              prefixIcon: Icon(icon,
+                  color: const Color(0xFF6B7280), size: 20),
+              suffixIcon: suffix,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                  vertical: 16, horizontal: 16),
+            ),
+          ),
+        ),
+        if (errorText != null) ...[
+          const SizedBox(height: 5),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(errorText,
+                style: const TextStyle(
+                    color: AppTheme.error, fontSize: 12,
+                    fontWeight: FontWeight.w500)),
+          ),
+        ],
+      ]);
 }
 
-class _RoleChip extends StatelessWidget {
+class _RoleCard extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool selected;
   final VoidCallback onTap;
-  const _RoleChip({required this.label, required this.icon,
+  const _RoleCard({required this.label, required this.icon,
       required this.selected, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        color: selected ? AppTheme.primary : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: selected ? AppTheme.primary : AppTheme.divider, width: 2),
-        boxShadow: selected ? [BoxShadow(color: AppTheme.primary.withOpacity(0.25),
+  Widget build(BuildContext context) => Expanded(
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF1A73E8) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? const Color(0xFF1A73E8) : const Color(0xFFE5E7EB),
+            width: 2),
+          boxShadow: selected ? [BoxShadow(
+            color: const Color(0xFF1A73E8).withOpacity(0.25),
             blurRadius: 12, offset: const Offset(0, 4))] : [],
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon,
+              color: selected ? Colors.white : const Color(0xFF6B7280),
+              size: 28),
+          const SizedBox(height: 6),
+          Text(label,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, fontSize: 14,
+                  color: selected ? Colors.white : const Color(0xFF1A1A2E))),
+        ]),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, color: selected ? Colors.white : AppTheme.textGrey, size: 20),
-        const SizedBox(width: 8),
-        Text(label, style: TextStyle(
-          fontWeight: FontWeight.w600, fontSize: 14,
-          color: selected ? Colors.white : AppTheme.textDark)),
-      ]),
     ),
   );
 }
