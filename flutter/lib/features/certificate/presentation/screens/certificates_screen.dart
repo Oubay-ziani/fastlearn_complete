@@ -149,13 +149,7 @@ class _CertCard extends ConsumerWidget {
                 'Issued: ${cert.issuedDate.toLocal().toString().substring(0, 10)}',
                 style: const TextStyle(color: Colors.white54, fontSize: 12)),
               const Spacer(),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppTheme.primary,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  elevation: 0),
+            
                 icon: vm.isLoading
                     ? const SizedBox(width: 14, height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2))
